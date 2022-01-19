@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "python-template"
+name = "fellracemap"
 version = "0.1.0"
 description = ""
 authors = ["Tom Liptrot <tom@ortom.co.uk>"]
@@ -25,3 +25,6 @@ pre-commit = "^2.16.0"
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+build = 'fellracemap.map:main'
