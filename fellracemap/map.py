@@ -1,11 +1,17 @@
 import os
+from calendar import month_name
+from collections import OrderedDict
 from operator import itemgetter
+from pathlib import Path
+from tkinter import N
 
 import folium
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup, SoupStrainer
 from loguru import logger
+
+race_data_path = Path("data/race_data.csv")
 
 
 def get_race_urls(index_url, base_url="https://races.fellrunner.org.uk"):
@@ -59,43 +65,56 @@ def get_postcodes(race_data):
     return pcd
 
 
-def build_race_data():
+def build_race_data() -> pd.DataFrame:
     logger.debug("building race dataset")
+
     race_urls = get_race_urls("https://races.fellrunner.org.uk/races")
     for i in range(2, 8):
         race_urls += get_race_urls(
             f"https://races.fellrunner.org.uk/races/upcoming?page={i}"
         )
-
+    # TODO load race data if needed and only scrape missing races.
     race_data = [scrape_race(race_url) for race_url in race_urls]
     race_data = pd.DataFrame(race_data)
 
     postcode_locations = get_postcodes(race_data)
     race_data = pd.merge(race_data, postcode_locations)
+    # if no website raplace with race_url
+    race_data.website.fillna(race_data.race_url, inplace=True)
+    # TODO if no postcode, try looking up address -> https://developers.google.com/maps/documentation/geocoding/overview
+    # TODO save race data
     return race_data
 
 
-def make_map(race_data):
+def make_map(race_data: pd.DataFrame):
     logger.debug("Making map")
-    race_map = folium.Map(prefer_canvas=True)
+    race_map = folium.Map(prefer_canvas=True, tiles="Stamen Terrain")
+
+    months = OrderedDict()
+    for month in month_name:
+        months[month] = folium.FeatureGroup(name=month)
 
     def add_marker(point):
-        """input: series that contains a numeric named latitude and a numeric named longitude
-        this function creates a CircleMarker and adds it to your this_map"""
-        folium.Marker(
+        marker = folium.Marker(
             location=[point.latitude, point.longitude],
             radius=2,
             weight=0,  # remove outline
             popup=f"{point.title} <br> {point.distance} <br> <a href='{point.website}' target='_blank'>{point.website}</a>",
             fill_color="#000000",
-        ).add_to(race_map)
+        )
+        if point.month in month_name:
+            marker.add_to(months[point.month])
 
     # use df.apply(,axis=1) to iterate through every row in your dataframe
     race_data[~race_data.longitude.isnull()].apply(add_marker, axis=1)
 
+    for month, layer in months.items():
+        layer.add_to(race_map)
+
+    folium.LayerControl(collapsed=False, hideSingleBase=True).add_to(race_map)
     # Set the zoom to the maximum possible
     race_map.fit_bounds(race_map.get_bounds())
-
+    # TODO add google analytics?
     # Save the map to an HTML file
     race_map.save(os.path.join("www/index.html"))
 
@@ -104,7 +123,10 @@ def make_map(race_data):
 
 def main():
     race_data = build_race_data()
+    race_data.to_csv(race_data_path)
     make_map(race_data)
 
 
-main()
+# if main then run
+if __name__ == "__main__":
+    main()
