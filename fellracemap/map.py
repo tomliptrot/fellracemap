@@ -81,6 +81,8 @@ def build_race_data() -> pd.DataFrame:
     race_data = pd.merge(race_data, postcode_locations)
     # if no website raplace with race_url
     race_data.website.fillna(race_data.race_url, inplace=True)
+    race_data["datetime"] = pd.to_datetime(race_data["date_&_time"])
+    race_data["month"] = race_data["datetime"].dt.month_name()
     # TODO if no postcode, try looking up address -> https://developers.google.com/maps/documentation/geocoding/overview
     # TODO save race data
     return race_data
