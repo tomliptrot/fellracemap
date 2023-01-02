@@ -11,7 +11,7 @@ import requests
 from bs4 import BeautifulSoup, SoupStrainer
 from loguru import logger
 
-race_data_path = Path("data/race_data.csv")
+race_data_path = Path("data/race_data.feather")
 
 
 def get_race_urls(index_url, base_url="https://races.fellrunner.org.uk"):
@@ -65,7 +65,7 @@ def get_postcodes(race_data):
     return pcd
 
 
-def build_race_data() -> pd.DataFrame:
+def build_race_data(old_race_data=None) -> pd.DataFrame:
     logger.debug("building race dataset")
 
     race_urls = get_race_urls("https://races.fellrunner.org.uk/races")
@@ -73,8 +73,13 @@ def build_race_data() -> pd.DataFrame:
         race_urls += get_race_urls(
             f"https://races.fellrunner.org.uk/races/upcoming?page={i}"
         )
-    # TODO load race data if needed and only scrape missing races.
+
+    if old_race_data is not None:
+        race_urls = list(set(race_urls) - set(old_race_data.race_url))
+
+    logger.debug(f"scraping {len(race_urls)} races")
     race_data = [scrape_race(race_url) for race_url in race_urls]
+    logger.debug(f"{len(race_data)} races scraped")
     race_data = pd.DataFrame(race_data)
 
     postcode_locations = get_postcodes(race_data)
@@ -85,7 +90,9 @@ def build_race_data() -> pd.DataFrame:
     race_data["month"] = race_data["datetime"].dt.month_name()
     # TODO if no postcode, try looking up address -> https://developers.google.com/maps/documentation/geocoding/overview
     # TODO save race data
-    return race_data
+    if old_race_data is not None:
+        race_data = pd.concat([race_data, old_race_data])
+    return race_data.reset_index(drop=True)
 
 
 def make_map(race_data: pd.DataFrame):
@@ -124,8 +131,12 @@ def make_map(race_data: pd.DataFrame):
 
 
 def main():
-    race_data = build_race_data()
-    race_data.to_csv(race_data_path)
+    if race_data_path.exists():
+        old_race_data = pd.read_feather(race_data_path)
+        race_data = build_race_data(old_race_data)
+    else:
+        race_data = build_race_data()
+    race_data.to_feather(race_data_path)
     make_map(race_data)
 
 
